@@ -7,16 +7,15 @@ export const metadata = { title: "Edit product" };
 
 export default async function EditProductPage({ params }: PageProps<"/dashboard/products/[id]">) {
   const id = Number((await params).id);
-  const product = db.prepare("SELECT * FROM products WHERE id = ?").get(id) as Product | undefined;
+  const product = await db.get<Product>("SELECT * FROM products WHERE id = ?", id);
   if (!product) notFound();
 
-  const { sold } = db
-    .prepare(
-      `SELECT COALESCE(SUM(i.quantity), 0) AS sold FROM order_items i
-       JOIN orders o ON o.id = i.order_id WHERE i.product_id = ? AND o.payment_status = 'paid'`,
-    )
-    .get(id) as { sold: number };
-  const hasOrders = !!db.prepare("SELECT 1 FROM order_items WHERE product_id = ? LIMIT 1").get(id);
+  const { sold } = (await db.get<{ sold: number }>(
+    `SELECT COALESCE(SUM(i.quantity), 0) AS sold FROM order_items i
+     JOIN orders o ON o.id = i.order_id WHERE i.product_id = ? AND o.payment_status = 'paid'`,
+    id,
+  ))!;
+  const hasOrders = !!(await db.get("SELECT 1 FROM order_items WHERE product_id = ? LIMIT 1", id));
 
   return (
     <div className="mx-auto max-w-6xl">

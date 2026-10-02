@@ -2,7 +2,7 @@
 
 A small-business shop with a customer storefront, Google sign-in, Paystack checkout and an admin dashboard.
 
-Built with Next.js 16 (App Router), Auth.js (Google), SQLite (`better-sqlite3`) and Tailwind CSS 4.
+Built with Next.js 16 (App Router), Auth.js (Google), SQLite via Turso (`@libsql/client`) and Tailwind CSS 4.
 
 ## What's in it
 
@@ -45,11 +45,25 @@ Put your Google email(s) in `ADMIN_EMAILS`, comma-separated. Those accounts see 
 
 Prices are stored in kobo (minor units). The currency defaults to `NGN`; change `NEXT_PUBLIC_STORE_CURRENCY` if your Paystack account supports another (GHS, ZAR, KES, USD).
 
+### 4. Email (optional)
+
+The store emails the customer a receipt when payment is confirmed and again when an order is shipped, delivered or cancelled, and alerts everyone in `ADMIN_EMAILS` about each new paid order. It sends through any SMTP provider. With Gmail:
+
+1. Turn on 2-Step Verification for the Google account, then create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+2. Set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER` to the Gmail address and `SMTP_PASS` to the 16-character app password.
+
+If the SMTP settings are empty, emails are skipped and a warning is logged.
+
 ## Data
 
-The SQLite database lives at `data/store.db` and is created (with six sample products) on first run. Delete the file to start fresh. Back it up in production; it holds all orders.
+The app uses [Turso](https://turso.tech) (hosted SQLite) when `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are set. Create a database there, copy its URL, and create a token. Without them it uses a local file at `data/store.db`. Either way, tables and six sample products are created on first run.
 
-When you deploy, pick a host with a persistent disk (a VPS, Railway, Render, Fly.io with a volume). Serverless hosts like Vercel don't keep local files, so there you'd swap SQLite for a hosted database.
+## Deploying to Vercel
+
+1. Import the GitHub repo in Vercel.
+2. Add every variable from `.env.local` under **Settings → Environment Variables**, including the Turso ones. Set `APP_URL` to the Vercel URL.
+3. In Google Cloud, add `https://<your-app>.vercel.app` as a JavaScript origin and `https://<your-app>.vercel.app/api/auth/callback/google` as a redirect URI.
+4. In Paystack, set the webhook URL to `https://<your-app>.vercel.app/api/paystack/webhook`.
 
 ## Production
 

@@ -6,16 +6,16 @@ import { db, type Product } from "@/lib/db";
 import { formatMoney, LOW_STOCK_THRESHOLD } from "@/lib/config";
 
 function getProduct(slug: string) {
-  return db.prepare("SELECT * FROM products WHERE slug = ? AND active = 1").get(slug) as Product | undefined;
+  return db.get<Product>("SELECT * FROM products WHERE slug = ? AND active = 1", slug);
 }
 
 export async function generateMetadata({ params }: PageProps<"/products/[slug]">) {
-  const product = getProduct((await params).slug);
+  const product = await getProduct((await params).slug);
   return { title: product?.name ?? "Product not found" };
 }
 
 export default async function ProductPage({ params }: PageProps<"/products/[slug]">) {
-  const product = getProduct((await params).slug);
+  const product = await getProduct((await params).slug);
   if (!product) notFound();
 
   return (

@@ -11,9 +11,10 @@ export default async function CheckoutPage() {
 
   // Prefill from a signed-in customer's most recent order.
   const last = email
-    ? (db
-        .prepare("SELECT customer_name, phone, address, city FROM orders WHERE email = ? ORDER BY id DESC LIMIT 1")
-        .get(email) as { customer_name: string; phone: string; address: string; city: string } | undefined)
+    ? await db.get<{ customer_name: string; phone: string; address: string; city: string }>(
+        "SELECT customer_name, phone, address, city FROM orders WHERE email = ? ORDER BY id DESC LIMIT 1",
+        email,
+      )
     : undefined;
 
   return (

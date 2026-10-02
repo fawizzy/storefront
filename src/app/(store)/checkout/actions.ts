@@ -48,10 +48,9 @@ export async function startCheckout(input: CheckoutInput): Promise<CheckoutResul
   if (wanted.size === 0) return { error: "Your cart is empty." };
 
   // Prices always come from the database, never from the browser.
-  const getProduct = db.prepare("SELECT * FROM products WHERE id = ? AND active = 1");
   const lines: { product: Product; quantity: number }[] = [];
   for (const [productId, quantity] of wanted) {
-    const product = getProduct.get(productId) as Product | undefined;
+    const product = await db.get<Product>("SELECT * FROM products WHERE id = ? AND active = 1", productId);
     if (!product) return { error: "An item in your cart is no longer available. Remove it and try again." };
     if (product.stock < quantity) {
       return {
@@ -68,24 +67,25 @@ export async function startCheckout(input: CheckoutInput): Promise<CheckoutResul
   const total = subtotal + SHIPPING_FEE;
   // Only link the order to an account when the customer is signed in as that account.
   const userRow = user?.email
-    ? (db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id: number } | undefined)
+    ? await db.get<{ id: number }>("SELECT id FROM users WHERE email = ?", email)
     : undefined;
   const reference = `ord_${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}`;
 
-  const orderId = db.transaction(() => {
-    const { lastInsertRowid } = db
-      .prepare(
-        `INSERT INTO orders (reference, user_id, email, customer_name, phone, address, city,
-                             subtotal, shipping, total, currency)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(reference, userRow?.id ?? null, email, name, phone, address, city, subtotal, SHIPPING_FEE, total, CURRENCY);
-    const insertItem = db.prepare(
-      "INSERT INTO order_items (order_id, product_id, name, unit_price, quantity) VALUES (?, ?, ?, ?, ?)",
+  const orderId = await db.transaction(async (tx) => {
+    const { lastInsertRowid } = await tx.run(
+      `INSERT INTO orders (reference, user_id, email, customer_name, phone, address, city,
+                           subtotal, shipping, total, currency)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      reference, userRow?.id ?? null, email, name, phone, address, city, subtotal, SHIPPING_FEE, total, CURRENCY,
     );
-    for (const l of lines) insertItem.run(lastInsertRowid, l.product.id, l.product.name, l.product.price, l.quantity);
-    return Number(lastInsertRowid);
-  })();
+    for (const l of lines) {
+      await tx.run(
+        "INSERT INTO order_items (order_id, product_id, name, unit_price, quantity) VALUES (?, ?, ?, ?, ?)",
+        lastInsertRowid, l.product.id, l.product.name, l.product.price, l.quantity,
+      );
+    }
+    return lastInsertRowid;
+  });
 
   try {
     const tx = await initializeTransaction({
@@ -108,7 +108,7 @@ export async function startCheckout(input: CheckoutInput): Promise<CheckoutResul
     return { url: tx.authorization_url };
   } catch (err) {
     console.error(err);
-    db.prepare("UPDATE orders SET payment_status = 'failed' WHERE id = ?").run(orderId);
+    await db.run("UPDATE orders SET payment_status = 'failed' WHERE id = ?", orderId);
     return { error: "We couldn't reach Paystack. Try again in a moment." };
   }
 }

@@ -17,9 +17,9 @@ const LABELS: Record<string, string> = {
 
 export default async function OrderPage({ params }: PageProps<"/dashboard/orders/[id]">) {
   const id = Number((await params).id);
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as Order | undefined;
+  const order = await db.get<Order>("SELECT * FROM orders WHERE id = ?", id);
   if (!order) notFound();
-  const items = db.prepare("SELECT * FROM order_items WHERE order_id = ?").all(id) as OrderItem[];
+  const items = await db.all<OrderItem>("SELECT * FROM order_items WHERE order_id = ?", id);
 
   return (
     <div className="mx-auto max-w-4xl">

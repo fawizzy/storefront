@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/session";
-import { db, FULFILLMENT_STATUSES, type FulfillmentStatus } from "@/lib/db";
+import { db, FULFILLMENT_STATUSES, type FulfillmentStatus, type Order } from "@/lib/db";
+import { sendFulfillmentEmail } from "@/lib/email";
 
 export type FormState = { error?: string } | undefined;
 
@@ -44,13 +45,13 @@ export async function createProduct(_: FormState, formData: FormData): Promise<F
   const p = parsed.data;
 
   let slug = slugify(p.name) || "product";
-  const taken = db.prepare("SELECT 1 FROM products WHERE slug = ?");
-  for (let i = 2; taken.get(slug); i++) slug = `${slugify(p.name)}-${i}`;
+  for (let i = 2; await db.get("SELECT 1 FROM products WHERE slug = ?", slug); i++) slug = `${slugify(p.name)}-${i}`;
 
-  db.prepare(
+  await db.run(
     `INSERT INTO products (slug, name, description, category, image_url, price, stock, active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(slug, p.name, p.description, p.category, p.imageUrl, p.price, p.stock, p.active);
+    slug, p.name, p.description, p.category, p.imageUrl, p.price, p.stock, p.active,
+  );
   refreshStore();
   redirect("/dashboard/products");
 }
@@ -60,22 +61,23 @@ export async function updateProduct(id: number, _: FormState, formData: FormData
   const parsed = parseProduct(formData);
   if ("error" in parsed) return { error: parsed.error };
   const p = parsed.data;
-  db.prepare(
+  await db.run(
     `UPDATE products SET name = ?, description = ?, category = ?, image_url = ?, price = ?, stock = ?, active = ?
      WHERE id = ?`,
-  ).run(p.name, p.description, p.category, p.imageUrl, p.price, p.stock, p.active, id);
+    p.name, p.description, p.category, p.imageUrl, p.price, p.stock, p.active, id,
+  );
   refreshStore();
   redirect("/dashboard/products");
 }
 
 export async function deleteProduct(id: number) {
   await requireAdmin();
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM order_items WHERE product_id = ?").get(id) as { n: number };
+  const { n } = (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM order_items WHERE product_id = ?", id))!;
   if (n > 0) {
     // Keep order history intact: hide instead of deleting.
-    db.prepare("UPDATE products SET active = 0 WHERE id = ?").run(id);
+    await db.run("UPDATE products SET active = 0 WHERE id = ?", id);
   } else {
-    db.prepare("DELETE FROM products WHERE id = ?").run(id);
+    await db.run("DELETE FROM products WHERE id = ?", id);
   }
   refreshStore();
   redirect("/dashboard/products");
@@ -85,7 +87,13 @@ export async function setFulfillment(orderId: number, formData: FormData) {
   await requireAdmin();
   const status = String(formData.get("status")) as FulfillmentStatus;
   if (!FULFILLMENT_STATUSES.includes(status)) return;
-  db.prepare("UPDATE orders SET fulfillment_status = ? WHERE id = ? AND payment_status = 'paid'").run(status, orderId);
+  const { changes } = await db.run(
+    "UPDATE orders SET fulfillment_status = ? WHERE id = ? AND payment_status = 'paid' AND fulfillment_status != ?",
+    status, orderId, status,
+  );
   revalidatePath("/dashboard", "layout");
   revalidatePath("/orders");
+  if (changes === 1) {
+    await sendFulfillmentEmail((await db.get<Order>("SELECT * FROM orders WHERE id = ?", orderId))!);
+  }
 }

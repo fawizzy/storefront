@@ -4,8 +4,8 @@ import { formatMoney, LOW_STOCK_THRESHOLD } from "@/lib/config";
 
 export const metadata = { title: "Products" };
 
-export default function ProductsPage() {
-  const products = db.prepare("SELECT * FROM products ORDER BY active DESC, name").all() as Product[];
+export default async function ProductsPage() {
+  const products = await db.all<Product>("SELECT * FROM products ORDER BY active DESC, name");
 
   return (
     <div className="mx-auto max-w-6xl">

@@ -16,9 +16,7 @@ type FilterKey = keyof typeof FILTERS;
 export default async function OrdersPage({ searchParams }: PageProps<"/dashboard/orders">) {
   const { status } = await searchParams;
   const key: FilterKey = typeof status === "string" && status in FILTERS ? (status as FilterKey) : "paid";
-  const orders = db
-    .prepare(`SELECT * FROM orders WHERE ${FILTERS[key].where} ORDER BY id DESC LIMIT 200`)
-    .all() as Order[];
+  const orders = await db.all<Order>(`SELECT * FROM orders WHERE ${FILTERS[key].where} ORDER BY id DESC LIMIT 200`);
 
   return (
     <div className="mx-auto max-w-6xl">

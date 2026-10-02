@@ -1,6 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { db, type Order } from "@/lib/db";
+import { sendOrderPaidEmails } from "@/lib/email";
 
 const API = "https://api.paystack.co";
 
@@ -73,43 +74,44 @@ export function isValidWebhookSignature(rawBody: string, signature: string | nul
  * decrements stock. Safe to call repeatedly (callback page + webhook both call it).
  */
 export async function confirmPayment(reference: string): Promise<Order | null> {
-  const order = db.prepare("SELECT * FROM orders WHERE reference = ?").get(reference) as
-    | Order
-    | undefined;
+  const order = await db.get<Order>("SELECT * FROM orders WHERE reference = ?", reference);
   if (!order) return null;
   if (order.payment_status === "paid") return order;
 
   const tx = await paystack<VerifyData>(`/transaction/verify/${encodeURIComponent(reference)}`);
+  let newlyPaid = false;
 
   if (tx.status === "success") {
     // Never trust the client: amount and currency must match what we charged.
     if (tx.amount !== order.total || tx.currency !== order.currency) {
       console.error(`Payment mismatch for ${reference}: got ${tx.amount} ${tx.currency}`);
-      db.prepare("UPDATE orders SET payment_status = 'failed' WHERE id = ?").run(order.id);
+      await db.run("UPDATE orders SET payment_status = 'failed' WHERE id = ?", order.id);
     } else {
-      db.transaction(() => {
-        const updated = db
-          .prepare(
-            `UPDATE orders SET payment_status = 'paid', paystack_id = ?, paid_at = datetime(?)
-             WHERE id = ? AND payment_status != 'paid'`,
-          )
-          .run(String(tx.id), tx.paid_at ?? new Date().toISOString(), order.id);
+      newlyPaid = await db.transaction(async (t) => {
+        const updated = await t.run(
+          `UPDATE orders SET payment_status = 'paid', paystack_id = ?, paid_at = datetime(?)
+           WHERE id = ? AND payment_status != 'paid'`,
+          String(tx.id), tx.paid_at ?? new Date().toISOString(), order.id,
+        );
         // Only the first confirmation decrements stock.
         if (updated.changes === 1) {
-          db.prepare(
+          await t.run(
             `UPDATE products SET stock = MAX(0, stock - (
                SELECT COALESCE(SUM(quantity), 0) FROM order_items
                WHERE order_id = ? AND product_id = products.id))
              WHERE id IN (SELECT product_id FROM order_items WHERE order_id = ?)`,
-          ).run(order.id, order.id);
+            order.id, order.id,
+          );
         }
-      })();
+        return updated.changes === 1;
+      });
     }
   } else if (tx.status === "failed" || tx.status === "abandoned" || tx.status === "reversed") {
-    db.prepare("UPDATE orders SET payment_status = 'failed' WHERE id = ? AND payment_status = 'pending'").run(
-      order.id,
-    );
+    await db.run("UPDATE orders SET payment_status = 'failed' WHERE id = ? AND payment_status = 'pending'", order.id);
   }
 
-  return db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id) as Order;
+  const current = (await db.get<Order>("SELECT * FROM orders WHERE id = ?", order.id))!;
+  // Only the call that flipped the order to paid sends emails, so the callback page and webhook don't both send.
+  if (newlyPaid) await sendOrderPaidEmails(current);
+  return current;
 }

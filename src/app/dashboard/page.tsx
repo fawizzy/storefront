@@ -8,25 +8,22 @@ export const metadata = { title: "Overview" };
 
 const DAYS = 14;
 
-export default function Overview() {
-  const totals = db
-    .prepare(
-      `SELECT
+export default async function Overview() {
+  const totals = (await db.get<{ revenue: number; paid: number; toShip: number; customers: number }>(
+    `SELECT
          COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total END), 0) AS revenue,
          COUNT(CASE WHEN payment_status = 'paid' THEN 1 END) AS paid,
          COUNT(CASE WHEN payment_status = 'paid' AND fulfillment_status IN ('unfulfilled','processing') THEN 1 END) AS toShip,
          COUNT(DISTINCT CASE WHEN payment_status = 'paid' THEN email END) AS customers
        FROM orders`,
-    )
-    .get() as { revenue: number; paid: number; toShip: number; customers: number };
+  ))!;
 
-  const rows = db
-    .prepare(
-      `SELECT date(paid_at) AS day, SUM(total) AS revenue, COUNT(*) AS orders
-       FROM orders WHERE payment_status = 'paid' AND paid_at >= date('now', ?)
-       GROUP BY day`,
-    )
-    .all(`-${DAYS - 1} days`) as { day: string; revenue: number; orders: number }[];
+  const rows = await db.all<{ day: string; revenue: number; orders: number }>(
+    `SELECT date(paid_at) AS day, SUM(total) AS revenue, COUNT(*) AS orders
+     FROM orders WHERE payment_status = 'paid' AND paid_at >= date('now', ?)
+     GROUP BY day`,
+    `-${DAYS - 1} days`,
+  );
   const byDay = new Map(rows.map((r) => [r.day, r]));
   const series = Array.from({ length: DAYS }, (_, i) => {
     const d = new Date();
@@ -36,12 +33,11 @@ export default function Overview() {
   });
   const periodRevenue = series.reduce((s, d) => s + d.revenue, 0);
 
-  const recent = db
-    .prepare("SELECT * FROM orders WHERE payment_status != 'failed' ORDER BY id DESC LIMIT 6")
-    .all() as Order[];
-  const lowStock = db
-    .prepare("SELECT * FROM products WHERE active = 1 AND stock <= ? ORDER BY stock ASC LIMIT 6")
-    .all(LOW_STOCK_THRESHOLD) as Product[];
+  const recent = await db.all<Order>("SELECT * FROM orders WHERE payment_status != 'failed' ORDER BY id DESC LIMIT 6");
+  const lowStock = await db.all<Product>(
+    "SELECT * FROM products WHERE active = 1 AND stock <= ? ORDER BY stock ASC LIMIT 6",
+    LOW_STOCK_THRESHOLD,
+  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">

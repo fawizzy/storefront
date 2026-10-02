@@ -8,10 +8,15 @@ export const metadata = { title: "My orders" };
 
 export default async function OrdersPage() {
   const user = await requireUser("/orders");
-  const orders = db
-    .prepare("SELECT * FROM orders WHERE email = ? AND payment_status != 'failed' ORDER BY id DESC")
-    .all(user.email!.toLowerCase()) as Order[];
-  const itemsFor = db.prepare("SELECT * FROM order_items WHERE order_id = ?");
+  const orders = await db.all<Order>(
+    "SELECT * FROM orders WHERE email = ? AND payment_status != 'failed' ORDER BY id DESC",
+    user.email!.toLowerCase(),
+  );
+  const items = await db.all<OrderItem>(
+    `SELECT i.* FROM order_items i JOIN orders o ON o.id = i.order_id
+     WHERE o.email = ? AND o.payment_status != 'failed'`,
+    user.email!.toLowerCase(),
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -26,7 +31,7 @@ export default async function OrdersPage() {
       ) : (
         <ul className="mt-8 space-y-4">
           {orders.map((o) => {
-            const items = itemsFor.all(o.id) as OrderItem[];
+            const orderItems = items.filter((i) => i.order_id === o.id);
             return (
               <li key={o.id} className="rounded-lg border border-line bg-surface p-5">
                 <div className="flex flex-wrap items-center gap-3">
@@ -38,7 +43,7 @@ export default async function OrdersPage() {
                   </span>
                 </div>
                 <ul className="mt-3 text-sm text-muted">
-                  {items.map((i) => (
+                  {orderItems.map((i) => (
                     <li key={i.id}>
                       {i.name} × {i.quantity}
                     </li>

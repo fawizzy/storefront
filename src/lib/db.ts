@@ -1,5 +1,5 @@
 import "server-only";
-import Database from "better-sqlite3";
+import { createClient, type Client, type InValue, type ResultSet } from "@libsql/client";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -114,25 +114,81 @@ const SEED: Array<[string, string, string, number, number, string]> = [
   ["Ogiri okpei", "Fermented locust bean seasoning for ofe onugbu and egusi. 150g.", "Spices", 250000, 4, "ogiri-okpei"],
 ];
 
-function open(): Database.Database {
+// Turso in production (TURSO_DATABASE_URL); a local SQLite file otherwise.
+function connect(): Client {
+  const url = process.env.TURSO_DATABASE_URL;
+  if (url) return createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
   const dir = path.join(process.cwd(), "data");
   fs.mkdirSync(dir, { recursive: true });
-  const db = new Database(path.join(dir, "store.db"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.exec(SCHEMA);
-
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM products").get() as { n: number };
-  if (n === 0) {
-    const insert = db.prepare(
-      "INSERT INTO products (name, description, category, price, stock, slug) VALUES (?, ?, ?, ?, ?, ?)",
-    );
-    db.transaction(() => SEED.forEach((row) => insert.run(...row)))();
-  }
-  return db;
+  return createClient({ url: `file:${path.join(dir, "store.db")}` });
 }
 
-// Reuse one connection across hot reloads in dev.
-const globalForDb = globalThis as unknown as { __storeDb?: Database.Database };
-export const db = globalForDb.__storeDb ?? open();
-if (process.env.NODE_ENV !== "production") globalForDb.__storeDb = db;
+async function init(client: Client) {
+  await client.executeMultiple(SCHEMA);
+  const { rows } = await client.execute("SELECT COUNT(*) AS n FROM products");
+  if (Number(rows[0].n) === 0) {
+    await client.batch(
+      SEED.map((args) => ({
+        sql: "INSERT INTO products (name, description, category, price, stock, slug) VALUES (?, ?, ?, ?, ?, ?)",
+        args,
+      })),
+      "write",
+    );
+  }
+}
+
+// Reuse one client (and its schema setup) across hot reloads in dev.
+const globalForDb = globalThis as unknown as { __storeLibsql?: { client: Client; ready: Promise<void> } };
+const conn =
+  globalForDb.__storeLibsql ??
+  (() => {
+    const client = connect();
+    return { client, ready: init(client) };
+  })();
+if (process.env.NODE_ENV !== "production") globalForDb.__storeLibsql = conn;
+
+type Executor = { execute(stmt: { sql: string; args: InValue[] }): Promise<ResultSet> };
+
+function toObjects<T>(rs: ResultSet): T[] {
+  return rs.rows.map((row) => Object.fromEntries(rs.columns.map((c, i) => [c, row[i]])) as T);
+}
+
+function queries(ex: Executor) {
+  return {
+    async all<T>(sql: string, ...args: InValue[]): Promise<T[]> {
+      return toObjects<T>(await ex.execute({ sql, args }));
+    },
+    async get<T>(sql: string, ...args: InValue[]): Promise<T | undefined> {
+      return toObjects<T>(await ex.execute({ sql, args }))[0];
+    },
+    async run(sql: string, ...args: InValue[]) {
+      const rs = await ex.execute({ sql, args });
+      return { changes: rs.rowsAffected, lastInsertRowid: Number(rs.lastInsertRowid) };
+    },
+  };
+}
+
+export type Queries = ReturnType<typeof queries>;
+
+const base = queries({
+  async execute(stmt) {
+    await conn.ready;
+    return conn.client.execute(stmt);
+  },
+});
+
+export const db = {
+  ...base,
+  /** Runs fn in a write transaction; commits if it resolves, rolls back if it throws. */
+  async transaction<T>(fn: (tx: Queries) => Promise<T>): Promise<T> {
+    await conn.ready;
+    const tx = await conn.client.transaction("write");
+    try {
+      const result = await fn(queries(tx));
+      await tx.commit();
+      return result;
+    } finally {
+      tx.close();
+    }
+  },
+};

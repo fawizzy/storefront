@@ -16,17 +16,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, profile }) {
       // Only accept Google accounts with a verified email.
       if (!user.email || profile?.email_verified === false) return false;
-      db.prepare(
+      await db.run(
         `INSERT INTO users (email, name, image) VALUES (?, ?, ?)
          ON CONFLICT(email) DO UPDATE SET name = excluded.name, image = excluded.image`,
-      ).run(user.email.toLowerCase(), user.name ?? null, user.image ?? null);
+        user.email.toLowerCase(),
+        user.name ?? null,
+        user.image ?? null,
+      );
       return true;
     },
     async jwt({ token }) {
       if (token.email && !token.uid) {
-        const row = db
-          .prepare("SELECT id FROM users WHERE email = ?")
-          .get(token.email.toLowerCase()) as { id: number } | undefined;
+        const row = await db.get<{ id: number }>("SELECT id FROM users WHERE email = ?", token.email.toLowerCase());
         if (row) token.uid = row.id;
       }
       return token;

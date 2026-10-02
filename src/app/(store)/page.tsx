@@ -7,18 +7,16 @@ import { formatMoney, STORE_NAME } from "@/lib/config";
 export default async function Home({ searchParams }: PageProps<"/">) {
   const { category, denied } = await searchParams;
   const categories = (
-    db.prepare("SELECT DISTINCT category FROM products WHERE active = 1 ORDER BY category").all() as {
-      category: string;
-    }[]
+    await db.all<{ category: string }>("SELECT DISTINCT category FROM products WHERE active = 1 ORDER BY category")
   ).map((r) => r.category);
 
-  const products = (
+  const products =
     typeof category === "string"
-      ? db
-          .prepare("SELECT * FROM products WHERE active = 1 AND category = ? ORDER BY created_at DESC, id DESC")
-          .all(category)
-      : db.prepare("SELECT * FROM products WHERE active = 1 ORDER BY created_at DESC, id DESC").all()
-  ) as Product[];
+      ? await db.all<Product>(
+          "SELECT * FROM products WHERE active = 1 AND category = ? ORDER BY created_at DESC, id DESC",
+          category,
+        )
+      : await db.all<Product>("SELECT * FROM products WHERE active = 1 ORDER BY created_at DESC, id DESC");
 
   return (
     <>
