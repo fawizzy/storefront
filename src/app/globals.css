@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --paper: #f6f7fb;
+  --surface: #ffffff;
+  --ink: #181b34;
+  --muted: #5a5f7a;
+  --line: #e2e4ee;
+  --indigo: #26327a;
+  --indigo-soft: #e8ebf8;
+  --mark: #4758b8;
+  --turmeric: #e9a71a;
+  --good: #1f7a4d;
+  --warn: #a15c00;
+  --bad: #b3261e;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-indigo: var(--indigo);
+  --color-indigo-soft: var(--indigo-soft);
+  --color-mark: var(--mark);
+  --color-turmeric: var(--turmeric);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--turmeric);
+  outline-offset: 2px;
+}
+
+/* Adire-inspired resist-dye pattern: dots and rings on indigo. */
+.adire {
+  background-color: var(--indigo);
+  background-image:
+    radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.22) 0 3px, transparent 3.5px),
+    radial-gradient(circle at 50% 50%, transparent 0 13px, rgb(255 255 255 / 0.14) 13.5px 15px, transparent 15.5px),
+    linear-gradient(90deg, transparent 0 calc(50% - 1px), rgb(255 255 255 / 0.08) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px));
+  background-size: 40px 40px, 40px 40px, 80px 80px;
+}
+
+.adire-alt {
+  background-color: var(--indigo);
+  background-image:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.12) 0 2px, transparent 2px 14px),
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.12) 0 2px, transparent 2px 14px);
+}
+
+.adire-stripe {
+  background-color: var(--indigo);
+  background-image:
+    radial-gradient(ellipse 6px 14px at 50% 50%, rgb(255 255 255 / 0.2) 0 98%, transparent),
+    repeating-linear-gradient(0deg, transparent 0 22px, rgb(255 255 255 / 0.1) 22px 24px);
+  background-size: 24px 24px, 100% 24px;
+}
+
+@layer components {
+.field {
+  @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-muted/70;
+}
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-primary {
+  @apply bg-indigo text-white hover:bg-ink;
+}
+.btn-quiet {
+  @apply border border-line bg-surface text-ink hover:border-ink;
+}
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
