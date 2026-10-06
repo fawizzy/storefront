@@ -7,7 +7,7 @@ Built with Next.js 16 (App Router), Auth.js (Google), SQLite via Turso (`@libsql
 ## What's in it
 
 **Storefront**
-- Product grid with category filters, product pages, and a cart saved in the browser
+- Product grid with category filters, product pages, and a cart saved to the customer's account (shared with the mobile app; guests get a browser cart)
 - Sign in with Google to check out; delivery details are remembered from the last order
 - Paystack checkout: the server prices the cart from the database, creates a pending order, and sends the customer to Paystack
 - Payment is confirmed server-side on return (`/checkout/verify`) and by webhook, with the amount and currency checked against the order; stock is decremented once
@@ -17,6 +17,25 @@ Built with Next.js 16 (App Router), Auth.js (Google), SQLite via Turso (`@libsql
 - Overview: all-time revenue, paid orders, orders to ship, customers, 14-day revenue chart, recent orders, low-stock list
 - Orders: filter by to ship / paid / awaiting payment / failed; order detail with delivery info and a fulfillment status (not started → processing → shipped → delivered, or cancelled)
 - Products: add, edit, hide or delete; set price, stock, category and an optional image URL
+
+## JSON API (shared with the mobile app)
+
+The website and the [mobile app](../koko-mobile) use the same endpoints. Signed-in requests authenticate with the website's session cookie, or `Authorization: Bearer <token>` from the app.
+
+| Endpoint | |
+| --- | --- |
+| `GET /api/products[?category=]`, `GET /api/products/:slug` | Catalog (public) |
+| `GET /api/me` | Signed-in user and last delivery details |
+| `GET /api/cart` | The account's cart. `?wait=<version>` long-polls until it changes (≤25s) |
+| `POST /api/cart/items` `{productId, quantity?}` | Add to cart |
+| `PUT /api/cart/items/:productId` `{quantity}` · `DELETE …` | Set quantity / remove |
+| `DELETE /api/cart` | Empty the cart |
+| `POST /api/cart/merge` `{items}` | Fold a guest (browser) cart into the account after sign-in |
+| `POST /api/checkout` `{name, phone, address, city, returnUrl?}` | Check out the saved cart; returns the Paystack URL |
+| `GET /api/orders` | The account's orders |
+| `GET /api/mobile/auth/start`, `POST /api/mobile/auth/token` | App sign-in through the website's Google login (PKCE code exchange) |
+
+Signed-in carts live in the `cart_items` table, so a product added on the website shows up in the app (and the reverse) within about a second. Guests keep a browser cart, which is merged into their account when they sign in.
 
 ## Setup
 

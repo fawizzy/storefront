@@ -4,9 +4,10 @@ import { useEffect } from "react";
 import { useCart } from "@/components/CartProvider";
 
 export function ClearCart() {
-  const { clear, ready } = useCart();
+  const { clear, ready, synced } = useCart();
   useEffect(() => {
-    if (ready) clear();
-  }, [ready, clear]);
+    // Signed-in carts are cleared on the server when payment is confirmed.
+    if (ready && !synced) clear();
+  }, [ready, synced, clear]);
   return null;
 }

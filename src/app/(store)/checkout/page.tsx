@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { lastDeliveryDetails } from "@/lib/checkout";
 import { SHIPPING_FEE } from "@/lib/config";
 import { CheckoutForm } from "./CheckoutForm";
 
@@ -10,12 +10,7 @@ export default async function CheckoutPage() {
   const email = user?.email?.toLowerCase() ?? null;
 
   // Prefill from a signed-in customer's most recent order.
-  const last = email
-    ? await db.get<{ customer_name: string; phone: string; address: string; city: string }>(
-        "SELECT customer_name, phone, address, city FROM orders WHERE email = ? ORDER BY id DESC LIMIT 1",
-        email,
-      )
-    : undefined;
+  const last = email ? await lastDeliveryDetails(email) : undefined;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">

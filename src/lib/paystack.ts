@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { db, type Order } from "@/lib/db";
 import { sendOrderPaidEmails } from "@/lib/email";
+import { removeOrderedItems } from "@/lib/cart";
 
 const API = "https://api.paystack.co";
 
@@ -112,6 +113,10 @@ export async function confirmPayment(reference: string): Promise<Order | null> {
 
   const current = (await db.get<Order>("SELECT * FROM orders WHERE id = ?", order.id))!;
   // Only the call that flipped the order to paid sends emails, so the callback page and webhook don't both send.
-  if (newlyPaid) await sendOrderPaidEmails(current);
+  if (newlyPaid) {
+    // Clear what was bought from the account's shared cart (website and app).
+    if (current.user_id) await removeOrderedItems(current.user_id, current.id);
+    await sendOrderPaidEmails(current);
+  }
   return current;
 }

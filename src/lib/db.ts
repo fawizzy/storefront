@@ -101,6 +101,27 @@ CREATE TABLE IF NOT EXISTS order_items (
   unit_price INTEGER NOT NULL,
   quantity INTEGER NOT NULL CHECK (quantity > 0)
 );
+-- One cart per signed-in user, shared by the website and the mobile app.
+-- version goes up on every change so clients can wait for the next one.
+CREATE TABLE IF NOT EXISTS carts (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS cart_items (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  added_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, product_id)
+);
+-- One-time codes the mobile app swaps for a token after signing in on the website (PKCE).
+CREATE TABLE IF NOT EXISTS mobile_auth_codes (
+  code TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  challenge TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_paid_at ON orders(paid_at);
 `;
